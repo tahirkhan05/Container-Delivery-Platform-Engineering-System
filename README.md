@@ -11,7 +11,11 @@ A dedicated platform-engineering system designed to automate the entire software
 
 ---
 
-## 🏗️ Architecture & Delivery Highway
+## 📐 Architecture & Delivery Highway
+
+![AWS Architecture Diagram](docs/architecture.png)
+
+### Delivery Flowchart
 
 ```mermaid
 flowchart TD
