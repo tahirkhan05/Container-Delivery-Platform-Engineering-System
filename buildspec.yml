@@ -1,0 +1,45 @@
+version: 0.2
+
+# AWS CodeBuild Specification
+# 1. Installs test dependencies and runs automated unit tests.
+# 2. Authenticates with Amazon ECR.
+# 3. Builds Docker container tagged with immutable commit SHA ($CODEBUILD_RESOLVED_SOURCE_VERSION).
+# 4. Pushes image to ECR and writes imagedefinitions.json artifact for ECS deployment.
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - echo "Installing dependencies and test tools..."
+      - pip install -r app/requirements.txt pytest httpx
+
+  pre_build:
+    commands:
+      - echo "Running automated unit tests with pytest..."
+      - pytest app/test_main.py -v
+      - echo "Logging in to Amazon ECR..."
+      - AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=${COMMIT_HASH:=latest}
+      - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME
+
+  build:
+    commands:
+      - echo "Building Docker image on $(date)..."
+      - echo "Image Tag: $IMAGE_TAG"
+      - docker build --build-arg GIT_COMMIT_SHA=$IMAGE_TAG -t $REPOSITORY_URI:latest -t $REPOSITORY_URI:$IMAGE_TAG ./app
+
+  post_build:
+    commands:
+      - echo "Pushing Docker images to Amazon ECR..."
+      - docker push $REPOSITORY_URI:latest
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - echo "Writing image definitions artifact for ECS deployment..."
+      - printf '[{"name":"app","imageUri":"%s"}]' "$REPOSITORY_URI:$IMAGE_TAG" > imagedefinitions.json
+      - cat imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
